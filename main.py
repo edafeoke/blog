@@ -80,6 +80,55 @@ async def create_blog(title: str = Form(...), body: str = Form(...), user: User 
     return {"message": "Blog created successfully"}
 
 # Add login, registration, and user management routes as well
+# Registration Form Model
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+# User Registration Routes
+# Render the registration page
+@app.get("/register")
+async def render_register_page(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
+
+@app.post("/register")
+async def register(user_data: UserCreate, db: Session = Depends(get_db)):
+    # Check if the username is already in use
+    existing_user = db.query(User).filter(User.username == user_data.username).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username is already taken")
+
+    # Hash the user's password before storing it in the database
+    hashed_password = pwd_context.hash(user_data.password)
+    user = User(username=user_data.username, password=hashed_password)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    # Render a success page using a template
+    return templates.TemplateResponse("registration_success.html", {"request": request})
+
+#LOGIN
+@app.get("/login")
+async def render_login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+# Login Route
+@app.post("/login")
+async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), templates: Jinja2Templates = Depends()):
+    user = db.query(User).filter(User.username == form_data.username).first()
+    if not user or not pwd_context.verify(form_data.password, user.password):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    # Create a token for the user
+    access_token_expires = timedelta(minutes=30)
+    access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
+    
+    # Set the token as a cookie and return it
+    response.set_cookie(key="access_token", value=access_token)
+
+    # Render a success page using a template
+    return templates.TemplateResponse("login_success.html", {"request": request})
 
 if __name__ == "__main__":
     # Create the tables if they don't exist
